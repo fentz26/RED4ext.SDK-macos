@@ -22,7 +22,7 @@ struct __declspec(align(0x10)) SkinnedMeshComponent : ent::ISkinTargetComponent
     static constexpr const char* NAME = "entSkinnedMeshComponent";
     static constexpr const char* ALIAS = NAME;
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(RED4EXT_GAME_VERSION_25)
     // macOS 2.3.1: clang and the game start this class in ISkinTargetComponent's tail padding (dsize 0x1D8; the RTTI
     // dump has entSkinnedClothComponent::graphicsMesh at 0x1D8), so every member sits 8 bytes lower than on Windows.
     // The RTTI properties from mesh on confirm it; renderProxy/appearanceHandle/meshHandle are native, not in RTTI.
@@ -77,11 +77,17 @@ struct __declspec(align(0x10)) SkinnedMeshComponent : ent::ISkinTargetComponent
 #endif
 };
 RED4EXT_ASSERT_SIZE(SkinnedMeshComponent, 0x270);
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(RED4EXT_GAME_VERSION_25)
 RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, mesh, 0x220);
 RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, chunkMask, 0x240);
 RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, forcedLodDistance, 0x255);
 RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, version, 0x260);
+#elif defined(__APPLE__)
+// 2.5 RTTI: ISkinTargetComponent's reflected fields extend through +0x1D8.
+RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, mesh, 0x228);
+RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, chunkMask, 0x248);
+RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, forcedLodDistance, 0x25D);
+RED4EXT_ASSERT_OFFSET(SkinnedMeshComponent, version, 0x268);
 #endif
 } // namespace ent
 } // namespace RED4ext

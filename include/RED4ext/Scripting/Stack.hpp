@@ -114,6 +114,12 @@ RED4EXT_ASSERT_OFFSET(CScriptStack, type, 0x40);
 struct CStackFrame
 {
     CStackFrame(IScriptable* aContext, char* aCode, void* aUnk = nullptr);
+#ifdef RED4EXT_GAME_VERSION_25
+    ~CStackFrame();
+    // A root frame owns its map, and unk98 points into this object.
+    CStackFrame(const CStackFrame&) = delete;
+    CStackFrame& operator=(const CStackFrame&) = delete;
+#endif
 
     char* code;            // 00
     CBaseFunction* func;   // 08 - For scripted functions
@@ -131,6 +137,14 @@ struct CStackFrame
     uint8_t currentParam;  // 62
     bool useDirectData;    // 63 - If set the result param is not used, preventing an extra copy of the result
 
+#ifdef RED4EXT_GAME_VERSION_25
+    bool isRoot;           // 64
+    uint8_t unk65[3];
+    uint8_t unk68[0x30];   // 68 - root PoolScript call map
+    void* unk98;           // 98 - shared root call map
+    uint8_t unkA0;
+#endif
+
     void Step()
     {
         this->code++;
@@ -141,7 +155,13 @@ struct CStackFrame
         return (paramFlags & (1 << currentParam)) != 0;
     }
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CStackFrame, 0xA8);
+RED4EXT_ASSERT_OFFSET(CStackFrame, unk68, 0x68);
+RED4EXT_ASSERT_OFFSET(CStackFrame, unk98, 0x98);
+#else
 RED4EXT_ASSERT_SIZE(CStackFrame, 0x68);
+#endif
 } // namespace RED4ext
 
 #ifdef RED4EXT_HEADER_ONLY

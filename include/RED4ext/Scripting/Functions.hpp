@@ -88,6 +88,12 @@ struct CBaseFunction : IFunction
     CCompiledCode bytecode;         // 78
     Flags flags;                    // A8
     int32_t unkAC;                  // AC
+#ifdef RED4EXT_GAME_VERSION_25
+    uint8_t unkB0[0x18];            // B0 - call-site set
+    uint8_t unkC8[0x18];            // C8 - call-site set
+    int64_t unkE0;
+    CBaseFunction* unkE8;           // E8 - script redirect target
+#endif
 
 private:
     using Handler_t = void (*)(void*, RED4ext::CStackFrame&, void*, rtti::IType*);
@@ -96,7 +102,11 @@ private:
     static Handler_t GetHandler(uint32_t aIndex);
     bool ExecuteNative(CStack* aStack, CStackFrame& aFrame);
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CBaseFunction, 0xF0);
+#else
 RED4EXT_ASSERT_SIZE(CBaseFunction, 0xB0);
+#endif
 RED4EXT_ASSERT_OFFSET(CBaseFunction, fullName, 0x08);
 RED4EXT_ASSERT_OFFSET(CBaseFunction, bytecode, 0x78);
 RED4EXT_ASSERT_OFFSET(CBaseFunction, flags, 0xA8);
@@ -123,8 +133,13 @@ struct CGlobalFunction : CBaseFunction
 
     uint32_t regIndex; // B0
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CGlobalFunction, 0xF8);
+RED4EXT_ASSERT_OFFSET(CGlobalFunction, regIndex, 0xF0);
+#else
 RED4EXT_ASSERT_SIZE(CGlobalFunction, 0xB8);
 RED4EXT_ASSERT_OFFSET(CGlobalFunction, regIndex, 0xB0);
+#endif
 
 struct CClassFunction : CBaseFunction
 {
@@ -158,9 +173,15 @@ struct CClassFunction : CBaseFunction
     CClass* parent;    // B0
     uint32_t regIndex; // B8
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CClassFunction, 0x100);
+RED4EXT_ASSERT_OFFSET(CClassFunction, parent, 0xF0);
+RED4EXT_ASSERT_OFFSET(CClassFunction, regIndex, 0xF8);
+#else
 RED4EXT_ASSERT_SIZE(CClassFunction, 0xC0);
 RED4EXT_ASSERT_OFFSET(CClassFunction, parent, 0xB0);
 RED4EXT_ASSERT_OFFSET(CClassFunction, regIndex, 0xB8);
+#endif
 
 struct CClassStaticFunction : CClassFunction
 {
@@ -184,14 +205,23 @@ struct CClassStaticFunction : CClassFunction
         return memory;
     }
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CClassStaticFunction, 0x100);
+#else
 RED4EXT_ASSERT_SIZE(CClassStaticFunction, 0xC0);
+#endif
 
 struct CScriptedFunction : CBaseFunction
 {
     CClass* parent; // B0
 };
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_ASSERT_SIZE(CScriptedFunction, 0xF8);
+RED4EXT_ASSERT_OFFSET(CScriptedFunction, parent, 0xF0);
+#else
 RED4EXT_ASSERT_SIZE(CScriptedFunction, 0xB8);
 RED4EXT_ASSERT_OFFSET(CScriptedFunction, parent, 0xB0);
+#endif
 } // namespace RED4ext
 
 #ifdef RED4EXT_HEADER_ONLY

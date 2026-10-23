@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -50,6 +51,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INCLUDE = ROOT / "include"
 GENERATED = INCLUDE / "RED4ext/Scripting/Natives/Generated"
+CPP_DEFINES = []
 CPP_KEYWORDS = {"auto", "double", "enum", "float", "operator", "struct", "void"}
 MAX_ALIGN = 16  # no game type is aligned to more than 16, so tail padding is shorter than that
 HOLDER = 1 << 0x15  # CProperty::Flags inValueHolder: the value lives in the script holder, not in the instance
@@ -59,6 +61,7 @@ STRUCT = re.compile(r"^struct (?:__declspec\(align\((0x[0-9A-Fa-f]+)\)\) )?(\w+)
 BODY = re.compile(r"(    static constexpr const char\* ALIAS = [^;\n]+;\n\n)(.*?)(^};\n)", re.S | re.M)
 SIZE_LINE = re.compile(r"^RED4EXT_ASSERT_SIZE\((\w+), (0x[0-9A-Fa-f]+)\);\n", re.M)
 APPLE_BLOCK = re.compile(r"^#ifdef __APPLE__\n(.*?)^#else\n(.*?)^#endif\n", re.S | re.M)
+BASE_BLOCK = re.compile(r"^#ifdef __APPLE__\n(struct [^\n]+)\n#else\n(struct [^\n]+)\n#endif\n", re.M)
 FIELD = re.compile(r"^    (alignas\(\d+\) )?(.+) (\w+)((?:\[[^\]]*\])?); // ([0-9A-F]+)(?: -- (.+))?$")
 PAD = re.compile(r"^    uint8_t unk[0-9A-F]+\[0x[0-9A-F]+ - 0x[0-9A-F]+\]; // [0-9A-F]+$")
 
@@ -86,6 +89,7 @@ class Header:
     align: int  # __declspec(align) on the struct, 0 if none
     win_lines: list[str]
     fields: list[Field] = field(default_factory=list)
+    mac_scriptable_base: bool = False
 
 
 def pad(start: int, end: int) -> str:
@@ -112,7 +116,7 @@ def parse(path: Path) -> Header | None:
     text = path.read_text()
     if "\n/*\n" in text:  # redirect header: the struct is hand-written elsewhere
         return None
-    name, struct = NAME.search(text), STRUCT.search(text)
+    name, struct = NAME.search(text), STRUCT.search(BASE_BLOCK.sub(r"\2\n", text))
     parts = windows_parts(text)
     if not name or not struct or not parts:
         return None
@@ -140,6 +144,8 @@ def probe_handwritten(dump: dict) -> dict[str, tuple[int, int, int]]:
             ("BaseGameEngine", "RED4ext::BaseGameEngine", "RED4ext/GameEngine.hpp"),
             ("CGameEngine", "RED4ext::CGameEngine", "RED4ext/GameEngine.hpp")]
     for path in sorted(GENERATED.rglob("*.hpp")):
+        if path.name.startswith("._"):
+            continue
         text = path.read_text()
         if "\n/*\n" not in text:
             continue
@@ -153,7 +159,7 @@ def probe_handwritten(dump: dict) -> dict[str, tuple[int, int, int]]:
         src.write_text(f"#include <RED4ext/RED4ext.hpp>\n#include <{inc}>\n#include <cstdio>\n#include <cstddef>\n"
                        f"struct D_ : {cpp} {{ char c; }};\n"
                        f'int main() {{ printf("%zu %zu %zu", sizeof({cpp}), alignof({cpp}), offsetof(D_, c)); }}\n')
-        r = subprocess.run(["clang++", "-std=c++20", "-w", f"-I{INCLUDE}", f"-I{ROOT / 'vendor/D3D12MemAlloc'}",
+        r = subprocess.run(["clang++", "-std=c++20", "-w", *CPP_DEFINES, f"-I{INCLUDE}", f"-I{ROOT / 'vendor/D3D12MemAlloc'}",
                             str(src), "-o", str(exe)], capture_output=True, text=True)
         if r.returncode:
             print(f"probe: {rtti} ({inc}) does not compile, its derived classes keep the Windows layout", file=sys.stderr)
@@ -256,6 +262,10 @@ class Planner:
             self.plans[rtti] = "absent"
             return None
         parent = mac["parent"]
+        # Some patch versions move a native class from ISerializable to
+        # IScriptable. Padding alone cannot model its new script-holder base.
+        declaration = STRUCT.search(BASE_BLOCK.sub(r"\2\n", hdr.text))
+        hdr.mac_scriptable_base = parent == "IScriptable" and declaration.group(3) == "ISerializable"
         if parent:
             base = self.clang(parent)
             if base is None:
@@ -369,8 +379,20 @@ def render(hdr: Header, plan: tuple[list[str], list[tuple[str, int]], int] | str
         checks = "".join(f"RED4EXT_ASSERT_OFFSET({cls}, {m}, 0x{o:X});\n" for m, o in asserts)
         new_size = f"#ifdef __APPLE__\nRED4EXT_ASSERT_SIZE({cls}, 0x{size:X});\n{checks}#else\n{size_line}#endif\n"
     t = hdr.text
-    return t[: body.start(2)] + new_body + t[body.end(2) : size_match.start() + body.end()] + new_size + \
+    result = t[: body.start(2)] + new_body + t[body.end(2) : size_match.start() + body.end()] + new_size + \
         t[size_match.end() + body.end() :]
+    result = BASE_BLOCK.sub(r"\2\n", result)
+    if hdr.mac_scriptable_base:
+        declaration = STRUCT.search(result)
+        windows = declaration.group(0)
+        macos = windows.replace(": ISerializable", ": IScriptable")
+        result = (result[:declaration.start()] + f"#ifdef __APPLE__\n{macos}\n#else\n{windows}\n#endif" +
+                  result[declaration.end():])
+        include = "#include <RED4ext/Scripting/IScriptable.hpp>"
+        if include not in result:
+            result = result.replace("#include <RED4ext/ISerializable.hpp>",
+                                    "#include <RED4ext/ISerializable.hpp>\n#ifdef __APPLE__\n" + include + "\n#endif")
+    return result
 
 
 REDIRECT_SIZE = re.compile(r"^(?:#ifdef __APPLE__\nRED4EXT_ASSERT_SIZE\([\w:]+, 0x[0-9A-F]+\);\n#else\n)?"
@@ -395,12 +417,13 @@ def render_redirect(text: str, classes: dict, hand: dict[str, tuple[int, int, in
 
 def verify() -> int:
     """Compile every generated header with the macOS layout asserts on; returns the number of failing asserts."""
-    includes = [f"#include <{p.relative_to(INCLUDE)}>\n" for p in sorted(GENERATED.rglob("*.hpp"))]
+    includes = [f"#include <{p.relative_to(INCLUDE)}>\n" for p in sorted(GENERATED.rglob("*.hpp"))
+                if not p.name.startswith("._")]
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp, "all.cpp")
         while True:  # a fatal error (missing include) stops clang: drop that header and go again
             src.write_text("#include <RED4ext/RED4ext.hpp>\n" + "".join(includes))
-            r = subprocess.run(["clang++", "-std=c++20", "-fsyntax-only", "-ferror-limit=0", "-w",
+            r = subprocess.run(["clang++", "-std=c++20", "-fsyntax-only", "-ferror-limit=0", "-w", *CPP_DEFINES,
                                 "-DRED4EXT_ENABLE_MACOS_LAYOUT_ASSERTS", f"-I{INCLUDE}",
                                 f"-I{ROOT / 'vendor/D3D12MemAlloc'}", str(src)], capture_output=True, text=True)
             fatal = re.search(rf"In file included from {re.escape(str(src))}:(\d+):(?:(?!\n[^\n]*In file included from "
@@ -413,23 +436,42 @@ def verify() -> int:
     for line in failures + other:
         print(line)
     print(f"verify: {len(failures)} failing layout asserts, {len(other)} other compile errors")
-    return len(failures)
+    return len(failures) + len(other)
 
 
 def main() -> int:
+    global INCLUDE, GENERATED, CPP_DEFINES
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dump", type=Path, default=ROOT / "data/rtti_layout_macos.json")
     ap.add_argument("--check", action="store_true", help="write nothing; exit 1 if a header would change")
     ap.add_argument("--verify", action="store_true", help="compile all generated headers with the macOS asserts on")
     ap.add_argument("--report", type=Path, help="write the per-class notes here")
+    ap.add_argument("--output-include", type=Path,
+                    help="generate in a separate copy of include/, preserving the default game profile")
+    ap.add_argument("--define", action="append", default=[],
+                    help="preprocessor definition for layout probes and verification (repeatable)")
     args = ap.parse_args()
+
+    CPP_DEFINES = [f"-D{definition}" for definition in args.define]
+    if args.output_include:
+        destination = args.output_include.resolve()
+        if destination == INCLUDE.resolve() or INCLUDE.resolve() in destination.parents:
+            ap.error("--output-include must be outside the source include tree")
+        if not args.check:
+            shutil.copytree(INCLUDE, destination, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("._*"), copy_function=shutil.copyfile)
+        elif not destination.is_dir():
+            ap.error("--check requires an existing output include tree")
+        INCLUDE = destination
+        GENERATED = INCLUDE / "RED4ext/Scripting/Natives/Generated"
 
     dump = json.loads(args.dump.read_text())
     # Hand-written classes can embed generated ones, so their probed layout depends on what this script writes:
     # repeat until the probe is stable, which makes the next run a no-op.
     hand, changed_total = None, set()
     for _ in range(5):
-        headers = {h.rtti: h for p in sorted(GENERATED.rglob("*.hpp")) if (h := parse(p))}
+        headers = {h.rtti: h for p in sorted(GENERATED.rglob("*.hpp"))
+                   if not p.name.startswith("._") and (h := parse(p))}
         probed = probe_handwritten(dump)
         if probed == hand:
             break
@@ -446,6 +488,8 @@ def main() -> int:
         if args.check or not changed:
             break
     for path in sorted(GENERATED.rglob("*.hpp")):
+        if path.name.startswith("._"):
+            continue
         text = path.read_text()
         if "\n/*\n" in text and (new := render_redirect(text, dump["classes"], hand)) != text:
             changed_total.add(path.stem)

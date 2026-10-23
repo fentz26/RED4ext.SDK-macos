@@ -5,6 +5,7 @@
 #endif
 
 #include <bit>
+#include <cstring>
 
 #include <RED4ext/Detail/AddressHashes.hpp>
 #include <RED4ext/RTTISystem.hpp>
@@ -65,4 +66,25 @@ RED4EXT_INLINE RED4ext::CStackFrame::CStackFrame(IScriptable* aContext, char* aC
     paramFlags = 0;
     currentParam = 0;
     useDirectData = false;
+#ifdef RED4EXT_GAME_VERSION_25
+    isRoot = true;
+    std::memset(unk65, 0, sizeof(unk65));
+    std::memset(unk68, 0, sizeof(unk68));
+    const uint32_t empty = 0xFFFFFFFF;
+    std::memcpy(unk68 + 0x20, &empty, sizeof(empty));
+    static UniversalRelocVtbl poolScript(Detail::AddressHashes::Memory_PoolScript_vtbl);
+    auto allocator = reinterpret_cast<uintptr_t>(static_cast<uintptr_t*>(poolScript));
+    std::memcpy(unk68 + 0x28, &allocator, sizeof(allocator));
+    unk98 = unk68;
+    unkA0 = 0;
+#endif
 }
+
+#ifdef RED4EXT_GAME_VERSION_25
+RED4EXT_INLINE RED4ext::CStackFrame::~CStackFrame()
+{
+    using destructor_t = void (*)(CStackFrame*);
+    static UniversalRelocFunc<destructor_t> destroyFrame(Detail::AddressHashes::CStackFrame_dtor);
+    destroyFrame(this);
+}
+#endif

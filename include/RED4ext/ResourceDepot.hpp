@@ -47,7 +47,24 @@ struct ResourceDepot
 
     static ResourceDepot* Get();
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(RED4EXT_GAME_VERSION_25)
+    // macOS 2.5 (ctor 0x101519F6C, dtor 0x10151A4E4; see docs/re/game25.md): four arrays inserted at 48..88.
+    void* vtbl2;                   // 08 - second vptr
+    DynArray<ArchiveGroup> groups; // 10
+    uint32_t groupFlags;           // 20 - bit 0: groups need sorting
+    DynArray<CString> unk28;       // 28
+    DynArray<CString> unk38;       // 38
+    DynArray<void*> unk48;         // 48 - 0x50-byte entries
+    DynArray<CString> unk58;       // 58
+    DynArray<void*> unk68;         // 68
+    DynArray<void*> unk78;         // 78
+    uint32_t unk88;                // 88
+    CString rootPath;              // 90
+    CString unkB0;                 // B0
+    uint8_t unkD0;                 // D0
+    DynArray<void*> unkD8;         // D8 - 0x140-byte entries
+    uint8_t lock;                  // E8
+#elif defined(__APPLE__)
     // macOS (ResourceGameDepot ctor 0x103ED9578, dtor 0x103ED9A00; see docs/re/core.md).
     void* vtbl2;                   // 08 - second vptr
     DynArray<ArchiveGroup> groups; // 10
@@ -65,7 +82,13 @@ struct ResourceDepot
     bool hasModArchives;           // 50
 #endif
 };
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(RED4EXT_GAME_VERSION_25)
+RED4EXT_ASSERT_SIZE(ResourceDepot, 0xF0);
+RED4EXT_ASSERT_OFFSET(ResourceDepot, groups, 0x10);
+RED4EXT_ASSERT_OFFSET(ResourceDepot, rootPath, 0x90);
+RED4EXT_ASSERT_OFFSET(ResourceDepot, unkD8, 0xD8);
+RED4EXT_ASSERT_OFFSET(ResourceDepot, lock, 0xE8);
+#elif defined(__APPLE__)
 RED4EXT_ASSERT_SIZE(ResourceDepot, 0x80);
 RED4EXT_ASSERT_OFFSET(ResourceDepot, groups, 0x10);
 RED4EXT_ASSERT_OFFSET(ResourceDepot, rootPath, 0x48);

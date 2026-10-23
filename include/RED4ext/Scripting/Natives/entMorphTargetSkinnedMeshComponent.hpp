@@ -21,7 +21,7 @@ struct __declspec(align(0x10)) MorphTargetSkinnedMeshComponent : ent::ISkinTarge
     static constexpr const char* NAME = "entMorphTargetSkinnedMeshComponent";
     static constexpr const char* ALIAS = NAME;
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(RED4EXT_GAME_VERSION_25)
     // macOS 2.3.1: clang and the game start this class in ISkinTargetComponent's tail padding (dsize 0x1D8; the RTTI
     // dump has entSkinnedClothComponent::graphicsMesh at 0x1D8), so every member sits 8 bytes lower than on Windows.
     // The RTTI properties confirm it; renderProxy and meshHandle are native, not in RTTI.
@@ -68,7 +68,7 @@ struct __declspec(align(0x10)) MorphTargetSkinnedMeshComponent : ent::ISkinTarge
     uint8_t unk362[0x370 - 0x362];               // 362
 #endif
 };
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(RED4EXT_GAME_VERSION_25)
 RED4EXT_ASSERT_SIZE(MorphTargetSkinnedMeshComponent, 0x360);
 RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, morphResource, 0x1F8);
 RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, meshAppearance, 0x230);
@@ -76,6 +76,12 @@ RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, tags, 0x300);
 RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, version, 0x359);
 #else
 RED4EXT_ASSERT_SIZE(MorphTargetSkinnedMeshComponent, 0x370);
+#ifdef __APPLE__
+RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, morphResource, 0x200);
+RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, meshAppearance, 0x238);
+RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, tags, 0x308);
+RED4EXT_ASSERT_OFFSET(MorphTargetSkinnedMeshComponent, version, 0x361);
+#endif
 #endif
 } // namespace ent
 } // namespace RED4ext

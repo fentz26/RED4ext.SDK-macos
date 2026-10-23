@@ -65,7 +65,13 @@ struct IRTTISystem
     virtual CString* GetStringConst(uint32_t aIndex) = 0;         // 128 - Used by StringConst opcode (0x10)
     virtual void SetStringTable(DynArray<CString>& aStrings) = 0; // 130 - Called by script loader
 
-    virtual ~IRTTISystem() = 0; // 138
+#ifdef RED4EXT_GAME_VERSION_25
+    virtual void sub_138() = 0;
+    virtual void sub_140() = 0;
+    virtual void sub_148() = 0;
+    virtual void sub_150() = 0;
+#endif
+    virtual ~IRTTISystem() = 0; // 138 on 2.3.1, 158 on 2.5
 };
 RED4EXT_ASSERT_SIZE(IRTTISystem, 0x8);
 
@@ -93,8 +99,24 @@ struct CRTTISystem : IRTTISystem
     Mutex unk1E0;                                    // 1E0
     SharedSpinLock typesLock;                        // 208
     Mutex rttiRegistratorMutex;                      // 210
+#if defined(__APPLE__) && defined(RED4EXT_GAME_VERSION_25)
+    // 2.5 macOS constructor 0x10B3384 initializes these after the two existing
+    // pthread mutexes. Their purpose is unknown; do not access them directly.
+    DynArray<void*> unk268;
+    DynArray<void*> unk278;
+    Mutex unk288;
+    Mutex unk2C8;
+#endif
 };
+#if defined(__APPLE__) && defined(RED4EXT_GAME_VERSION_25)
+RED4EXT_ASSERT_SIZE(CRTTISystem, 0x308);
+RED4EXT_ASSERT_OFFSET(CRTTISystem, unk268, 0x268);
+RED4EXT_ASSERT_OFFSET(CRTTISystem, unk288, 0x288);
+#elif defined(__APPLE__)
+RED4EXT_ASSERT_SIZE(CRTTISystem, 0x268);
+#else
 RED4EXT_ASSERT_SIZE(CRTTISystem, 0x238);
+#endif
 RED4EXT_ASSERT_OFFSET(CRTTISystem, types, 0x10);
 RED4EXT_ASSERT_OFFSET(CRTTISystem, funcs, 0xA0);
 RED4EXT_ASSERT_OFFSET(CRTTISystem, scriptToNative, 0x150);

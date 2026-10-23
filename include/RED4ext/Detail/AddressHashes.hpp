@@ -105,6 +105,10 @@ constexpr std::uint32_t CRTTISystem_Get = 0x4A610F64;
 #pragma endregion
 
 #pragma region CStack
+#ifdef RED4EXT_GAME_VERSION_25
+constexpr std::uint32_t CStackFrame_dtor = 0x952E09D3;
+constexpr std::uint32_t Memory_PoolScript_vtbl = 0x600407D7;
+#endif
 constexpr std::uint32_t CStack_vtbl = 0x349A0EE1;
 #pragma endregion
 
